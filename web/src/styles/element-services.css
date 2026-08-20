@@ -1,0 +1,10 @@
+/**
+ * element-services.css —— ElMessage / ElMessageBox 等命令式服务的样式兜底
+ * 删除 main.ts 全量 CSS 后，这些 JS 调用的组件无标签可被 unplugin 扫描，
+ * 需显式引入其样式
+ */
+@import 'element-plus/theme-chalk/el-message.css';
+@import 'element-plus/theme-chalk/el-message-box.css';
+/* .el-overlay（弹窗遮罩）的 position:fixed / z-index 定义在独立的 el-overlay.css，
+   不引入则遮罩退化为 static 元素、z-index 失效，弹窗会被页面内容"盖住"（实测验证） */
+@import 'element-plus/theme-chalk/el-overlay.css';

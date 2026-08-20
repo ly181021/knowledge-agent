@@ -1,0 +1,92 @@
+/**
+ * Knowledge Agent 设计 Token —— 晨雾陶土
+ * 稳重成熟系：守往日暖调，比珊瑚深一档，更像专业助手
+ * 核心规则：赤陶=结果（强调），琥珀=过程（仅 box-shadow 光晕，不承载文字）
+ * WCAG AA 验证：正文/次要全达标，按钮用深陶态底 4.58:1
+ */
+
+:root {
+  /* ===== 主色：晨雾陶土 ===== */
+  --sa-primary: #c47b5a; /* 赤陶橙（链接/激活） */
+  --sa-primary-hover: #a8644a; /* 深陶（按钮常态底推荐 + hover） */
+  --sa-primary-light: #f0ddd0; /* 赤陶浅底 */
+  --sa-primary-pressed: #8f5238; /* 深焦陶 */
+
+  /* ===== 过程态光晕（思考灯箱专用，仅 box-shadow，对比度 1.9:1 不承载文字）===== */
+  --sa-glow-amber: rgba(232, 168, 124, 0.35);
+  --sa-glow-amber-strong: 0 0 24px rgba(232, 168, 124, 0.3);
+  --sa-amber: #e8a87c; /* 琥珀色（仅装饰/光晕） */
+
+  /* ===== 背景：晨雾奶油系 ===== */
+  --sa-bg: #faf7f2; /* 主底：晨雾奶 */
+  --sa-bg-sidebar: #f1ebe0; /* 侧栏：淡杏 */
+  --sa-bg-user-msg: #f1ebe0; /* 用户气泡：与侧栏同色 */
+  --sa-bg-hover: #ebe4d6; /* 悬停：雾杏 */
+  --sa-bg-active: #e2d8c6; /* 选中：沙陶 */
+  --sa-bg-input: #ffffff;
+  --sa-bg-card: #ffffff;
+
+  /* ===== 文字：暖墨系 ===== */
+  --sa-text-primary: #2d2620; /* 标题：暖墨 */
+  --sa-text-regular: #3d342c; /* 正文 */
+  --sa-text-secondary: #6b6258; /* 次要：暖灰 */
+  --sa-text-placeholder: #6b6258;
+  --sa-text-inverse: #faf7f2;
+
+  /* ===== 边框：暖色发丝线 ===== */
+  --sa-border: #e6dfd2;
+  --sa-border-light: #ece5d8;
+  --sa-border-input: #d4cab8;
+
+  /* ===== 重建中语义色（reindex 进行态=紫，区别于解析中琥珀）===== */
+  --sa-build-bg: #efe6f0;
+  --sa-build-fg: #8a5a8a;
+  --sa-build-dot: #a86aa8;
+
+  /* ===== 圆角 ===== */
+  --sa-radius-sm: 6px;
+  --sa-radius-md: 10px;
+  --sa-radius-lg: 14px;
+  --sa-radius-full: 20px;
+
+  /* ===== 触控目标 ===== */
+  --sa-touch-target: 40px;
+
+  /* ===== 间距 ===== */
+  --sa-gap-xs: 8px;
+  --sa-gap: 16px;
+  --sa-gap-lg: 24px;
+
+  /* ===== 阴影：暖色调（不用纯黑）===== */
+  --sa-shadow: 0 1px 3px rgba(120, 100, 80, 0.08), 0 1px 2px rgba(120, 100, 80, 0.04);
+  --sa-shadow-hover: 0 4px 12px rgba(120, 100, 80, 0.12);
+  --sa-shadow-pop: 0 8px 24px rgba(120, 100, 80, 0.15);
+
+  /* ===== 焦点环：主色低透明描边 ===== */
+  --sa-focus-ring: 0 0 0 3px rgba(196, 123, 90, 0.2);
+
+  /* ===== 遮罩 ===== */
+  --sa-overlay: rgba(45, 38, 32, 0.32);
+
+  /* ===== 图表色板 ===== */
+  --sa-chart-primary: #c47b5a;
+  --sa-chart-secondary: #b8a080;
+  --sa-chart-tertiary: #8a9a8e;
+
+  /* ===== 代码块 ===== */
+  --sa-bg-code: #2b2620;
+  --sa-text-code: #e8e2d6;
+  --sa-font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+
+  /* ===== 过渡（去掉 all，改具体属性；侧栏宽度过渡单独声明）===== */
+  --sa-transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+
+  /* ===== Element Plus 主色覆盖为赤陶橙 ===== */
+  --el-color-primary: #c47b5a;
+  --el-color-primary-light-3: #d4a085;
+  --el-color-primary-light-5: #e0bcab;
+  --el-color-primary-light-7: #ecd6cc;
+  --el-color-primary-light-8: #f2e3da;
+  --el-color-primary-light-9: #f8efe9;
+  --el-color-primary-dark-2: #a8644a;
+}

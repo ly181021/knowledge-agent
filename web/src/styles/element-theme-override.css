@@ -1,0 +1,22 @@
+/**
+ * element-theme-override.css —— Element Plus 主色覆盖（晨雾陶土）
+ *
+ * 背景：Element Plus 基础样式块里声明了 :root { --el-color-primary: #409eff }（默认蓝），
+ *   与项目 theme.css 里的 :root 覆盖存在 CSS 加载顺序竞争。当 Element 基础块在
+ *   theme.css 之后加载时，蓝色 #409eff 覆盖掉陶土色，导致按钮/单选/下拉全变蓝。
+ *
+ * 方案：用 html:root 选择器（specificity 0,2,0）覆盖 Element 的 :root（0,1,0），
+ *   不依赖 CSS 加载顺序，彻底消除竞争。配套补全 button/radio/select 需要的主色衍生变量。
+ */
+
+html:root {
+  /* 主色：晨雾陶土（覆盖 Element 默认蓝 #409eff） */
+  --el-color-primary: #c47b5a;
+  --el-color-primary-rgb: 196, 123, 90;
+  --el-color-primary-light-3: #d4a085;
+  --el-color-primary-light-5: #e0bcab;
+  --el-color-primary-light-7: #ecd6cc;
+  --el-color-primary-light-8: #f2e3da;
+  --el-color-primary-light-9: #f8efe9;
+  --el-color-primary-dark-2: #a8644a;
+}
