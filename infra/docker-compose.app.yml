@@ -1,0 +1,86 @@
+# Knowledge Agent 应用编排（server + server-init + web）
+#
+# 用途：在 docker-compose.yml（中间件 5 件套）之上，叠加应用层服务，实现一键全栈部署。
+# 基础设施与应用职责分离：开发时只跑 docker-compose.yml（前端 dev、后端 start:dev 本地调试），
+# 演示/部署时叠加本文件起全栈。
+#
+# 启动（在 infra/ 目录）：
+#   # 1. 先起中间件（若未起）
+#   docker compose up -d
+#   # 2. 起全栈应用（首次建 admin 加 SEED_ENABLED=true）
+#   SEED_ENABLED=true docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
+#   # 访问 http://localhost（web）/ http://localhost/api/docs（Swagger）
+#
+# 连接覆盖说明（容器内 ≠ 宿主机）：
+#   env_file 读 server/.env（localhost），下面 environment 覆盖为容器服务名。
+#   Kafka 双 listener：宿主机走 EXTERNAL(29092)，容器内走 INTERNAL(9092)。
+#   详见 docker-compose.yml 的 kafka 服务注释。
+
+services:
+  # ---------- DB 初始化（一次性任务，类比现有 minio-init）----------
+  # 串行执行：prisma migrate deploy（MySQL，幂等）→ pgvector 建表（PG，幂等）→ 可选 seed
+  server-init:
+    build:
+      context: ../server
+      target: init              # builder 阶段（保留 prisma CLI + ts-node）
+    container_name: knowledge-agent-server-init
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../server/.env          # 读 LLM_KEY / JWT_SECRET / SEED_ADMIN_* 等
+    environment:
+      # 覆盖为容器服务名（env_file 里是 localhost）
+      DATABASE_URL: mysql://knowledgeagent:knowledgeagent123@mysql:3306/knowledgeagent
+      PG_URL: postgresql://knowledgeagent:knowledgeagent123@postgres:5432/knowledgeagent
+      TZ: Asia/Shanghai
+      # seed 总开关：首次部署设 true 建首个 admin，之后设 false（默认）
+      SEED_ENABLED: ${SEED_ENABLED:-false}
+    # 串行：migrate → pgvector → seed（seed 由 SEED_ENABLED 控制，失败不影响前两步）
+    # migrate deploy 幂等跑 3 个 migration；pgvector.sql 全 IF NOT EXISTS；seed.ts 用 upsert
+    command: >
+      sh -c "pnpm prisma migrate deploy &&
+             node prisma/run-pgvector.js &&
+             ( [ \"$SEED_ENABLED\" = \"true\" ] && pnpm prisma db seed || true )"
+    restart: "no"               # 一次性任务，失败不重启（server 会因依赖未完成而等待）
+
+  # ---------- 后端（NestJS）----------
+  server:
+    build:
+      context: ../server        # 默认 target=runner
+    container_name: knowledge-agent-server
+    depends_on:
+      server-init:
+        condition: service_completed_successfully   # init 成功后才起
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - ../server/.env
+    environment:
+      # 连接覆盖（容器服务名）
+      DATABASE_URL: mysql://knowledgeagent:knowledgeagent123@mysql:3306/knowledgeagent
+      PG_URL: postgresql://knowledgeagent:knowledgeagent123@postgres:5432/knowledgeagent
+      REDIS_HOST: redis
+      KAFKA_BROKERS: kafka:9092          # 容器内走 INTERNAL listener（宿主机才是 29092）
+      MINIO_ENDPOINT: minio
+      NODE_ENV: production                # 覆盖 env_file 的 development
+      TZ: Asia/Shanghai                   # 与中间件容器时区对齐
+    ports:
+      - "3000:3000"                       # 直连后端（Swagger / 调试用）
+    restart: unless-stopped
+
+  # ---------- 前端（nginx 托管 + 反代）----------
+  web:
+    build: ../web
+    container_name: knowledge-agent-web
+    depends_on:
+      - server
+    ports:
+      - "80:80"                           # 主入口
+    restart: unless-stopped

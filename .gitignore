@@ -1,0 +1,62 @@
+# 依赖
+node_modules/
+**/node_modules/
+.pnp/
+.pnp.js
+
+# 构建产物
+dist/
+build/
+*.tsbuildinfo
+
+# 环境变量（含密钥，绝不提交）
+# 注意：.env.example 是模板（给人看的），故意保留提交
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# Prisma
+# 保留 migrations/，不忽略
+# 但忽略本地 SQLite（若用）
+*.db
+*.db-journal
+
+# 临时
+tmp/
+temp/
+
+# 本地个人忽略规则（类似 .env.local 的惯例：文件在项目根，规则仅本机用，不上传）
+.gitignore.local
+
+# 前端转译产物防复发（Vite 默认 .js 优先于 .ts，冗余 .js 副本会导致加载旧版逻辑）
+web/src/**/*.js
+web/src/**/*.mjs
+web/src/**/*.cjs
+
+# Vite 插件自动生成的类型声明（unplugin-vue-components / unplugin-auto-import）
+# 注意：这两个文件已纳入 git —— CI 的 vue-tsc 类型检查需要它们（缺失时
+#   el-table 等组件插槽参数会推断为 implicit any 导致构建失败），
+#   dev 重新生成内容一致时不会产生 diff；env.d.ts 是手写声明，保留

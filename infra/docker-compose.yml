@@ -1,0 +1,152 @@
+# Knowledge Agent 基础设施（Docker Compose）
+#
+# 用途：本地起 MySQL + PostgreSQL(pgvector) + Redis + MinIO + Kafka（KRaft 单节点）五件套
+#
+# 启动：docker compose up -d
+# 停止：docker compose down
+# 清数据重建：docker compose down -v && docker compose up -d
+# 安全：所有 ports 均绑定 127.0.0.1（仅本机可连），防止带默认凭据的中间件暴露到局域网
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: knowledge-agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: knowledgeagent
+      MYSQL_USER: knowledgeagent
+      MYSQL_PASSWORD: knowledgeagent123
+      TZ: Asia/Shanghai # 时区
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # MySQL 8 默认 caching_sha2_password，部分老客户端不兼容，改回 mysql_native_password
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    # pgvector/pgvector 镜像内置 vector 扩展，省去手动安装
+    image: pgvector/pgvector:pg16
+    container_name: knowledge-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: knowledgeagent
+      POSTGRES_PASSWORD: knowledgeagent123
+      POSTGRES_DB: knowledgeagent
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # 启动后自动创建 vector 扩展（LangGraph PostgresSaver.setup() 也要建表，可后置）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledgeagent -d knowledgeagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: knowledge-agent-redis
+    restart: unless-stopped
+    # 暂不设密码，本地开发；生产加 requirepass
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: knowledge-agent-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "127.0.0.1:9000:9000"     # S3 API
+      - "127.0.0.1:9001:9001"     # Console
+    volumes:
+      - minio_data:/data
+    # 启动时同时跑 server 和 console（管理 UI）
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # MinIO 启动后自动建 bucket（一次性任务）
+  minio-init:
+    image: minio/mc:latest
+    container_name: knowledge-agent-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 minioadmin minioadmin
+        mc mb -p local/knowledge-agent-docs || true
+        mc anonymous set download local/knowledge-agent-docs || true
+        echo "bucket knowledge-agent-docs ready"
+
+  # Kafka broker（KRaft 单节点：一个进程同时兼任 controller 与 broker，无需 ZooKeeper）
+  # 镜像 pin 3.8.1（不用 latest）保证可复现；KRaft 模式与 4.x 一致，升级无模式切换成本
+  # 命名空间：Bitnami 镜像 2025 起从 Docker Hub 的 bitnami/ 迁移到 bitnamilegacy/（内容同源）
+  kafka:
+    image: bitnamilegacy/kafka:3.8.1
+    container_name: knowledge-agent-kafka
+    restart: unless-stopped
+    environment:
+      # KRaft：单节点下 controller（管元数据）与 broker（存消息）合体；生产多节点时再拆分角色
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # 三 listener：INTERNAL 供容器内互连（kafka:9092），EXTERNAL 供宿主机客户端（localhost:29092），
+      # CONTROLLER 供 KRaft 元数据共识（仅容器内，不映射宿主机端口）
+      # 不能用单一 advertised=localhost:29092——容器内连 localhost:29092 会连不上自己，broker 起不来
+      KAFKA_CFG_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # 单节点必须降内部 topic 副本数（bitnami 默认 3，单 broker 创建 __consumer_offsets 会报 InvalidReplicationFactor）
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: "1"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      TZ: Asia/Shanghai
+    ports:
+      # 9092 在 Windows Hyper-V 动态保留端口范围（9047-9146）内，宿主机映射改 29092（对应 EXTERNAL listener）
+      - "127.0.0.1:29092:29092"
+    volumes:
+      - kafka_kraft_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --list --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  mysql_data:
+  pg_data:
+  redis_data:
+  minio_data:
+  kafka_kraft_data:

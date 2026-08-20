@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master, dev]
+  pull_request:
+
+jobs:
+  server:
+    name: Server (lint / test / build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # 显式生成 Prisma Client（CI 里 @prisma/client 的 postinstall 自动生成不可靠，
+      # 不生成则编译期缺少 model 类型导致 test/build 失败）
+      - run: pnpm exec prisma generate
+
+      # CI 用不带 --fix 的 eslint 把关（本地 lint 脚本带 --fix 只用于自愈）
+      - run: pnpm exec eslint "src/**/*.ts"
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+  web:
+    name: Web (lint / build / test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec eslint "src/**/*.{ts,vue}"
+
+      # build 在 test 前：bundle-size 测试读取 dist/assets 产物
+      - run: pnpm build
+
+      - run: pnpm test

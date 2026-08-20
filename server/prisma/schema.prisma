@@ -1,0 +1,362 @@
+// knowledge-agent Prisma Schema
+// 全量数据模型建在 MySQL；postgres 侧向量表 document_chunks_vec 由 raw SQL 建（见 server/prisma/pgvector.sql）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 鉴权 ============
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  sessions     Session[]
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// ============ 会话与消息 ============
+model Session {
+  id             String        @id @default(uuid())
+  userId         String
+  title          String?
+  status         SessionStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  user           User          @relation(fields: [userId], references: [id])
+  messages       Message[]
+  memorySummaries MemorySummary[]
+  exchanges      ChatExchange[]
+  traceStages    TraceStage[]
+
+  @@index([userId])
+}
+
+enum SessionStatus {
+  ACTIVE
+  ARCHIVED
+  RESET
+}
+
+model Message {
+  id         String      @id @default(uuid())
+  sessionId  String
+  role       MessageRole
+  content    String      @db.Text
+  tokenCount Int?
+  toolCalls  Json?
+  // 引用与推荐追问随消息落库：刷新页面/切换会话后历史消息仍能渲染引用来源与推荐追问
+  // （前端 useChat 的 assistant 消息 id 与后端 id 不一致，localStorage 缓存对不上，必须存后端）
+  citations      Json?
+  recommendations Json?
+  createdAt  DateTime    @default(now())
+  session    Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+// ============ 记忆 ============
+model MemorySummary {
+  id        String   @id @default(uuid())
+  sessionId String
+  content   String   @db.Text
+  version   Int      @default(1)
+  lastCompressedAt DateTime? // 增量摘要游标（上次压缩覆盖到的消息最晚 createdAt）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// ============ 文档 ============
+model Document {
+  id          String         @id @default(uuid())
+  title       String
+  fileName    String
+  fileUrl     String         @db.Text
+  fileType    String
+  fileSize    Int
+  status      DocumentStatus @default(PARSING)
+  scopeId     String?
+  topicId     String?
+  businessType String?       // 业务分类：HR/PRODUCT/OPS/FINANCE
+  tags        Json?          // 文档标签数组
+  quality     String?        // GOOD / LOW / UNKNOWN（低质量检测）
+  // 轻量任务状态机：parseStage 细粒度展示解析到哪一步，errorCode/errorMsg 记失败原因（不靠翻 taskLog）
+  parseStage  String?        @db.VarChar(32)  // UPLOADED / PARSING / CHUNKING / VECTORIZING / INDEXED
+  errorCode   String?        @db.VarChar(64)  // KAFKA_SEND_FAILED / LOW_QUALITY / PIPELINE_ERROR / PARSE_TIMEOUT
+  errorMsg    String?        @db.Text         // Text 不受长度限制（避免 MySQL 严格模式超长报错→标FAILED失败→重投死循环）
+  charCount   Int?
+  tokenCount  Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  chunks      DocumentChunk[]
+  parentBlocks DocumentParentBlock[]
+  taskLogs    DocumentTaskLog[]
+  indexConfig DocumentIndexConfig?
+  // 结构节点（目录树）+ 文档画像（LLM 生成的类型/主题/示例问题）
+  structureNodes DocumentStructureNode[]
+  profile     DocumentProfile?
+  scope       KnowledgeScope?  @relation(fields: [scopeId], references: [id])
+  topic       KnowledgeTopic?  @relation(fields: [topicId], references: [id])
+
+  @@index([status])
+  @@index([scopeId])
+}
+
+enum DocumentStatus {
+  PARSING
+  INDEXING // reindex 中间态
+  INDEXED
+  FAILED
+  SOFT_DELETED
+}
+
+// 五层执行器
+enum ExecutionMode {
+  CLARIFICATION
+  RETRIEVAL
+  REACT_AGENT
+  GRAPH_ONLY
+  GRAPH_THEN_EVIDENCE
+}
+
+model DocumentChunk {
+  id           String   @id @default(uuid())
+  documentId   String
+  chunkIndex   Int
+  content      String   @db.Text
+  // 关系数据在 Prisma DocumentChunk，向量在 raw 表 document_chunks_vec
+  // 两者通过 (documentId, chunkIndex) 关联；查询向量时走 $queryRaw
+  embeddingId  String?
+  parentBlockId String?  // Parent-Child 聚合回填
+  tokenCount   Int?
+  createdAt    DateTime @default(now())
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, chunkIndex])
+}
+
+// Parent-Child 块聚合（小块检索、大块回答）
+model DocumentParentBlock {
+  id            String   @id @default(uuid())
+  documentId    String
+  content       String   @db.Text
+  maxChars      Int      @default(2200)
+  parentIndex   Int      @default(0) // 章节内 parent 排序
+  childChunkIds Json
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// 文档结构节点（目录树）。HeadingDetector 识别的标题落成节点，含父子链 + canonicalPath + 正文。
+// 不做兄弟链/锚点（无 ES/图投影需求）。
+model DocumentStructureNode {
+  id            String   @id @default(uuid())
+  documentId    String
+  nodeNo        Int          // 文档内节点序号（递增）
+  parentId      String?      // 父节点 id（栈式层级构建）
+  level         Int          // 层级（HeadingLine.level 直传）
+  title         String       // 标题文本（HeadingLine.text）
+  content       String   @db.Text   // 该节点下正文（标题行→下一标题行）
+  canonicalPath String       // 父子标题拼接 "产品手册>安装>1.1 环境要求"
+  lineNo        Int?         // 原文行号（HeadingLine.lineNo，调试/回源）
+  confidence    Float?       // 标题置信度（1.0 正则 / 0.7 冒号 / 0.58 启发式）
+  createdAt     DateTime @default(now())
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, nodeNo])
+  @@index([parentId])
+}
+
+// 文档画像（LLM 生成）：文档类型 / 主题关键词 / 示例问题，用于检索路由和知识管理界面。
+// 失败静默跳过（非必需）。
+model DocumentProfile {
+  id              String   @id @default(uuid())
+  documentId      String   @unique
+  docType         String?       // 文档类型（手册/规章/报告/FAQ...）
+  topics          Json?         // 主题关键词 string[]
+  sampleQuestions Json?         // 示例问题 string[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model DocumentTaskLog {
+  id          String     @id @default(uuid())
+  documentId  String
+  stage       String
+  status      TaskStatus
+  message     String?
+  durationMs  Int?
+  percent     Int?       // 阶段进度（0-100）
+  createdAt   DateTime   @default(now())
+  document    Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, stage])
+}
+
+// 按文档存储的索引配置，替代硬编码切块参数
+model DocumentIndexConfig {
+  id          String   @id @default(uuid())
+  documentId  String   @unique
+  chunkSize   Int      @default(800)
+  overlap     Int      @default(120)
+  // 有序策略流水线：按数组顺序执行（第一个生产型 chunk，后续转换型 chunk→chunk）
+  // 策略枚举：STRUCTURE（结构切块）/ RECURSIVE（递归兜底）/ SEMANTIC（语义精修）/ LLM（LLM智能切块）
+  // 默认值 ["STRUCTURE","RECURSIVE"] 由应用层 ChunkConfigAdvisor.DEFAULTS 提供（Prisma Json 不支持 @default）
+  pipeline    Json?
+  semanticThreshold Float? @default(0.6)      // 语义分块断点阈值（SEMANTIC 策略参数）
+  parseMode   String?                          // pdf: text/layout; docx: html/raw
+  source      String   @default("RECOMMEND")   // RECOMMEND(系统推荐) / MANUAL(手动覆盖)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+enum TaskStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// ============ 知识管理 ============
+model KnowledgeScope {
+  id        String            @id @default(uuid())
+  name      String
+  topics    KnowledgeTopic[]
+  documents Document[]
+}
+
+model KnowledgeTopic {
+  id        String          @id @default(uuid())
+  scopeId   String
+  name      String
+  scope     KnowledgeScope  @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  documents Document[]
+}
+
+model KnowledgeRouteTrace {
+  id              String   @id @default(uuid())
+  type            String
+  question        String   @db.Text
+  sessionId       String?
+  traceId         String?
+  rewriteQuestion String?  @db.Text
+  status          String
+  confidence      Float
+  scopeScores     Json?
+  topicScores     Json?
+  docScores       Json?
+  pickedDocId     String?
+  createdAt       DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([sessionId])
+  @@index([traceId])
+}
+
+// ============ 可观测性 ============
+model ChatExchange {
+  id              String        @id @default(uuid())
+  sessionId       String
+  question        String        @db.Text
+  answer          String        @db.Text
+  executionMode   ExecutionMode
+  durationMs      Int?
+  session         Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  traceStages     TraceStage[]
+  retrievalResults RetrievalResult[]
+  channelExecutions ChannelExecution[]
+  modelUsageTraces ChatModelUsageTrace[]
+  toolTraces      ChatToolTrace[]
+
+  @@index([sessionId])
+}
+
+model TraceStage {
+  id          String       @id @default(uuid())
+  sessionId   String
+  exchangeId  String?
+  stage       String
+  state       String
+  input       Json?
+  output      Json?
+  startedAt   DateTime     @default(now())
+  endedAt     DateTime?
+  durationMs  Int?
+  session     Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exchange    ChatExchange? @relation(fields: [exchangeId], references: [id])
+
+  @@index([sessionId, startedAt])
+}
+
+model RetrievalResult {
+  id               String       @id @default(uuid())
+  exchangeId       String
+  subQuestionIndex Int?
+  docId            String?
+  chunkId          String?
+  chunkContent     String?      @db.Text
+  vectorScore      Float?
+  keywordScore     Float?
+  rrfScore         Float?
+  rerankScore      Float?
+  accepted         Boolean      @default(false)
+  rank             Int?
+  exchange         ChatExchange @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+
+  @@index([exchangeId])
+  @@index([docId])
+}
+
+model ChannelExecution {
+  id               String       @id @default(uuid())
+  exchangeId       String
+  channel          String
+  subQuestionIndex Int?
+  recalled         Int
+  accepted         Int
+  durationMs       Int?
+  exchange         ChatExchange @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+}
+
+model ChatModelUsageTrace {
+  id               String       @id @default(uuid())
+  exchangeId       String
+  model            String
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  durationMs       Int?
+  exchange         ChatExchange @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+
+  @@map("chat_model_usage_trace")
+}
+
+model ChatToolTrace {
+  id          String       @id @default(uuid())
+  exchangeId  String
+  toolName    String
+  input       Json?
+  output      Json?
+  durationMs  Int?
+  retryCount  Int          @default(0)
+  exchange    ChatExchange @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+}

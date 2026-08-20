@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+
+# 锁文件不格式化
+pnpm-lock.yaml
+
+# 文档/设计稿不纳入代码格式化
+docs
+*.md
+*.docx
+
+# 生成物
+web/src/auto-imports.d.ts
+web/src/components.d.ts
+infra

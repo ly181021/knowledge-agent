@@ -1,0 +1,18 @@
+{
+  "name": "knowledge-agent-root",
+  "version": "0.1.0",
+  "private": true,
+  "description": "工具链根（husky + lint-staged + prettier），server/web 为独立子项目",
+  "packageManager": "pnpm@10.5.2",
+  "scripts": {
+    "prepare": "husky",
+    "lint:server": "pnpm --dir server lint",
+    "lint:web": "pnpm --dir web lint"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6"
+  }
+}

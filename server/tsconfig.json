@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    // moduleResolution: Node（node10 别名）在 TS 5.9 已弃用，升级 node16 需全量导入加扩展名，暂用官方过渡开关静音
+    "moduleResolution": "Node",
+    "ignoreDeprecations": "5.0",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    // TS 6.0 起 types 默认不再自动包含 node_modules/@types，显式声明全局类型（node 运行时 + jest 测试）
+    "types": ["node", "jest"],
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "prisma/**/*.ts"],
+  "exclude": ["node_modules", "test", "dist"]
+}
