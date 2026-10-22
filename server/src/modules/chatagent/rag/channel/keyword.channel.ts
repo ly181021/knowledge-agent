@@ -24,7 +24,7 @@ export class KeywordChannel implements RetrievalChannel {
   private readonly pgUrl: string
 
   constructor(private config: ConfigService) {
-    this.pgUrl = this.config.get<string>('PG_URL', 'postgresql://knowledgeagent:knowledgeagent123@localhost:5432/knowledgeagent')
+    this.pgUrl = this.config.getOrThrow<string>('PG_URL')
   }
 
   async retrieve(question: string, topK = 8, filterDocIds?: string[]): Promise<RetrievalResult[]> {

@@ -15,7 +15,7 @@ export class KeywordIndexService {
   private readonly pgUrl: string
 
   constructor(private config: ConfigService) {
-    this.pgUrl = this.config.get<string>('PG_URL', 'postgresql://knowledgeagent:knowledgeagent123@localhost:5432/knowledgeagent')
+    this.pgUrl = this.config.getOrThrow<string>('PG_URL')
   }
 
   /** 批量写入 tsv_zh（每批 200 行 VALUES 更新）；reindex 场景复用同一方法（先写后删事务边界内） */

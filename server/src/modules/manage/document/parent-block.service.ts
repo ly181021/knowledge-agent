@@ -29,7 +29,7 @@ export class ParentBlockService {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    this.pgUrl = this.config.get<string>('PG_URL', 'postgresql://knowledgeagent:knowledgeagent123@localhost:5432/knowledgeagent')
+    this.pgUrl = this.config.getOrThrow<string>('PG_URL')
   }
 
   /** 按章节边界聚合 child → parent；产出 parent 记录 + 回填 DocumentChunk.parentBlockId（reindex 时先删旧 parent） */

@@ -11,7 +11,8 @@ const prisma = new PrismaClient()
 
 async function main() {
   const username = process.env.SEED_ADMIN_USERNAME ?? 'admin'
-  const password = process.env.SEED_ADMIN_PASSWORD ?? 'admin123'
+  const password = process.env.SEED_ADMIN_PASSWORD
+  if (!password) throw new Error('SEED_ADMIN_PASSWORD 未配置，请在 server/.env 设置管理员密码')
   const passwordHash = bcrypt.hashSync(password, 10)
 
   const user = await prisma.user.upsert({

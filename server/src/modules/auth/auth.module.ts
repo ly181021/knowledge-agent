@@ -18,7 +18,8 @@ import { LocalStrategy } from './local.strategy'
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'knowledge-agent-jwt-secret-change-me-in-production-32chars+'),
+        // 密钥必填且经 env.schema 启动强校验，不设代码默认值
+        secret: config.get<string>('JWT_SECRET'),
         signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '720m') },
       }),
     }),

@@ -60,3 +60,6 @@ web/src/**/*.cjs
 # 注意：这两个文件已纳入 git —— CI 的 vue-tsc 类型检查需要它们（缺失时
 #   el-table 等组件插槽参数会推断为 implicit any 导致构建失败），
 #   dev 重新生成内容一致时不会产生 diff；env.d.ts 是手写声明，保留
+
+# demo:seed 运行时断点进度（本地状态，重跑产生）
+server/prisma/demo-data/.progress.json

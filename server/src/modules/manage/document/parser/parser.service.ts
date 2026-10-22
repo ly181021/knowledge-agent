@@ -47,9 +47,8 @@ export class ParserService {
       }
       case 'docx': {
         const mammoth = await import('mammoth')
-        const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-        // 用 convertToHtml 提取 Word heading 样式（h1~h6），再转 Markdown # 标记
-        const result = await mammoth.convertToHtml({ arrayBuffer })
+        // mammoth 的 Node 版只认 buffer 字段；arrayBuffer 是浏览器版字段，传了会报 Could not find file in options
+        const result = await mammoth.convertToHtml({ buffer })
         return this.cleanText(docxHtmlToMd(result.value))
       }
       default:

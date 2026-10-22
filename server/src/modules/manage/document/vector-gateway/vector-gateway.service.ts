@@ -32,7 +32,7 @@ export class VectorGatewayService {
     private llm: LlmService,
     private config: ConfigService,
   ) {
-    this.pgUrl = this.config.get<string>('PG_URL', 'postgresql://knowledgeagent:knowledgeagent123@localhost:5432/knowledgeagent')
+    this.pgUrl = this.config.getOrThrow<string>('PG_URL')
   }
 
   /**

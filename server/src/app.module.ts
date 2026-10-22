@@ -9,6 +9,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD, APP_PIPE } from '@nestjs/core'
 import { LoggerModule } from 'nestjs-pino'
 import { ZodValidationPipe } from 'nestjs-zod'
+import { validateEnv } from './config/env.schema'
 import { ChatagentModule } from './modules/chatagent/chatagent.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { ManageModule } from './modules/manage/manage.module'
@@ -22,8 +23,8 @@ import { PreviewModeInterceptor } from './modules/auth/interceptors/preview-mode
 
 @Module({
   imports: [
-    // 环境变量
-    ConfigModule.forRoot({ isGlobal: true }),
+    // 环境变量：validateEnv 启动强校验，必填项缺失或非法直接拒绝启动
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
 
     // 定时任务（补偿扫描用 @Interval，6.1.3 的 explorer 会 try/catch 包裹防单次异常崩进程）
     ScheduleModule.forRoot(),

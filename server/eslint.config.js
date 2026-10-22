@@ -26,5 +26,11 @@ module.exports = tseslint.config(
       globals: jest.environments.globals.globals,
     },
   },
+  {
+    // CLI 脚本（demo:seed / demo:eval）无 HTTP 出口，console 是与使用者唯一的交互面
+    // 模式必须带 **/ 前缀：lint-staged 以绝对路径调 eslint，files 匹配相对于 cwd（仓库根）而非本文件位置
+    files: ['**/src/scripts/**'],
+    rules: { 'no-console': 'off' },
+  },
   prettier,
 )

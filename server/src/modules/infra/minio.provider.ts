@@ -21,8 +21,8 @@ export class MinioService implements OnModuleInit {
       endPoint: this.config.get<string>('MINIO_ENDPOINT', 'localhost'),
       port: this.config.get<number>('MINIO_PORT', 9000),
       useSSL: this.config.get<string>('MINIO_USE_SSL') === 'true',
-      accessKey: this.config.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
-      secretKey: this.config.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
+      accessKey: this.config.getOrThrow<string>('MINIO_ACCESS_KEY'),
+      secretKey: this.config.getOrThrow<string>('MINIO_SECRET_KEY'),
     })
     this.logger.log(`MinIO client ready, bucket=${this.bucket}`)
   }

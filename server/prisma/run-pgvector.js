@@ -18,8 +18,8 @@ const { readFileSync } = require('fs')
 const { join } = require('path')
 const { Client } = require('pg')
 
-const PG_URL =
-  process.env.PG_URL || 'postgresql://knowledgeagent:knowledgeagent123@localhost:5432/knowledgeagent'
+const PG_URL = process.env.PG_URL
+if (!PG_URL) throw new Error('PG_URL 未配置，请在 server/.env 填入 pgvector 连接串')
 
 async function main() {
   const sqlPath = join(__dirname, 'pgvector.sql')
